@@ -1,0 +1,23 @@
+# Configuración de claude-reed.
+# install.sh la copia a ~/.config/claude-reed/config (permisos 600).
+# Ese archivo NO está en el repo: es el sitio para tu API key.
+
+# Motor de voz: piper | kokoro | elevenlabs  (o cualquier script en engines/)
+ENGINE=piper
+
+# --- Piper (local, ligero) -----------------------------------------------
+# Voces: https://huggingface.co/rhasspy/piper-voices
+# Si cambias de voz, vuelve a ejecutar ./install.sh para descargarla.
+PIPER_VOICE=es_ES-davefx-medium
+
+# --- Kokoro (local, más natural) -----------------------------------------
+# Voces en español: ef_dora, em_alex, em_santa
+KOKORO_VOICE=ef_dora
+KOKORO_LANG=es
+KOKORO_SPEED=1.0
+
+# --- ElevenLabs (nube, de pago por uso) ----------------------------------
+# Si ya la exportas en tu shell no hace falta ponerla aquí.
+# ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
+ELEVENLABS_MODEL=eleven_multilingual_v2

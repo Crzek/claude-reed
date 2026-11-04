@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# claude-reed: lee en voz alta la última respuesta de Claude Code.
+# Si ya está leyendo, la para (pensado para un atajo de teclado tipo "toggle").
+#
+# Uso:
+#   claude-reed             lee la última respuesta / para la lectura en curso
+#   claude-reed stop        para la lectura en curso
+#   claude-reed say TEXTO   lee TEXTO (útil para probar un motor)
+#   claude-reed engine      muestra el motor configurado
+set -uo pipefail
+
+APP_DIR="${CLAUDE_REED_HOME:-$HOME/.local/share/claude-reed}"
+CONFIG="${CLAUDE_REED_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/claude-reed/config}"
+TEXTO="${CLAUDE_REED_TEXTO:-$HOME/.cache/claude-reed/ultima-respuesta.txt}"
+PIDFILE="${XDG_RUNTIME_DIR:-/tmp}/claude-reed.pid"
+
+ENGINE=piper
+# shellcheck source=/dev/null
+if [[ -f "$CONFIG" ]]; then
+  set -a   # exporta la config a los scripts de los motores
+  source "$CONFIG"
+  set +a
+fi
+export APP_DIR
+
+avisar() {
+  notify-send "Claude" "$1" 2>/dev/null || echo "claude-reed: $1" >&2
+}
+
+reproducir() {
+  if command -v paplay >/dev/null; then paplay "$1"
+  elif command -v pw-play >/dev/null; then pw-play "$1"
+  elif command -v aplay >/dev/null; then aplay -q "$1"
+  elif command -v afplay >/dev/null; then afplay "$1"
+  else avisar "No encuentro ningún reproductor (paplay, pw-play, aplay)"; return 1
+  fi
+}
+
+parar() {
+  [[ -f "$PIDFILE" ]] || return 1
+  local pid
+  pid="$(cat "$PIDFILE")"
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null
+    rm -f "$PIDFILE"
+    return 0
+  fi
+  rm -f "$PIDFILE"
+  return 1
+}
+
+leer() {
+  local fichero="$1"
+  local motor="$APP_DIR/engines/$ENGINE.sh"
+  if [[ ! -x "$motor" ]]; then
+    avisar "Motor desconocido: $ENGINE (no existe $motor)"
+    exit 1
+  fi
+
+  # Job control: el lector va en su propio grupo de procesos, así "parar"
+  # mata también a los hijos (python, piper, el reproductor...).
+  set -m
+  (
+    WAV="$(mktemp --suffix=.wav)"
+    trap 'rm -f "$WAV"' EXIT
+    if "$motor" speak "$fichero" "$WAV"; then
+      reproducir "$WAV"
+    else
+      avisar "El motor $ENGINE ha fallado"
+    fi
+  ) &
+  echo $! > "$PIDFILE"
+  wait $! 2>/dev/null
+  rm -f "$PIDFILE"
+}
+
+case "${1:-}" in
+  stop)
+    parar ;;
+  say)
+    shift
+    parar
+    tmp="$(mktemp)"
+    trap 'rm -f "$tmp"' EXIT
+    printf '%s\n' "${*:-Hola, esto es una prueba de voz.}" > "$tmp"
+    leer "$tmp" ;;
+  engine)
+    echo "$ENGINE" ;;
+  -h|--help)
+    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ;;
+  "")
+    parar && exit 0   # pulsar otra vez = parar
+    if [[ ! -s "$TEXTO" ]]; then
+      avisar "Todavía no hay ninguna respuesta guardada"
+      exit 0
+    fi
+    leer "$TEXTO" ;;
+  *)
+    echo "Opción desconocida: $1 (usa --help)" >&2
+    exit 2 ;;
+esac

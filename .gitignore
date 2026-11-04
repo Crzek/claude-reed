@@ -1,0 +1,16 @@
+# Configuración local (puede contener tu API key)
+config
+.env
+*.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Modelos y audio
+*.onnx
+*.onnx.json
+*.bin
+*.wav
