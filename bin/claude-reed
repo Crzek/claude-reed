@@ -36,6 +36,15 @@ reproducir() {
   fi
 }
 
+# Reproduce audio en crudo (s16le mono) desde stdin a la frecuencia $1.
+reproducir_crudo() {
+  if command -v paplay >/dev/null; then paplay --raw --rate="$1" --format=s16le --channels=1
+  elif command -v pw-cat >/dev/null; then pw-cat --playback --rate="$1" --format=s16 --channels=1 -
+  elif command -v aplay >/dev/null; then aplay -q -t raw -r "$1" -f S16_LE -c 1
+  else return 1
+  fi
+}
+
 parar() {
   [[ -f "$PIDFILE" ]] || return 1
   local pid
@@ -61,6 +70,10 @@ leer() {
   # mata también a los hijos (python, piper, el reproductor...).
   set -m
   (
+    # Si el motor sabe hacer streaming, empieza a sonar con la primera frase.
+    if rate="$("$motor" rate 2>/dev/null)" && [[ "$rate" =~ ^[0-9]+$ ]]; then
+      "$motor" stream "$fichero" | reproducir_crudo "$rate" && exit 0
+    fi
     WAV="$(mktemp --suffix=.wav)"
     trap 'rm -f "$WAV"' EXIT
     if "$motor" speak "$fichero" "$WAV"; then
