@@ -65,7 +65,7 @@ chmod 600 "$CONFIG"
 # shellcheck source=/dev/null
 ENGINE="$(source "$CONFIG"; echo "${ENGINE:-piper}")"
 if [[ ! -f "$APP_DIR/engines/$ENGINE.sh" ]]; then
-  echo "Motor desconocido: $ENGINE (disponibles: $(cd "$APP_DIR/engines" && ls -- *.sh | sed 's/\.sh$//' | xargs))" >&2
+  echo "Motor desconocido: $ENGINE (disponibles: $(find "$APP_DIR/engines" -name "*.sh" -printf "%f " | sed "s/\.sh//g"))" >&2
   exit 1
 fi
 if [[ -n "$VOICE_ARG" ]]; then
