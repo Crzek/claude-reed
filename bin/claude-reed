@@ -7,12 +7,15 @@
 #   claude-reed stop        para la lectura en curso
 #   claude-reed say TEXTO   lee TEXTO (útil para probar un motor)
 #   claude-reed engine      muestra el motor configurado
+#   claude-reed prepare     genera ya el audio de la última respuesta (lo usa el hook)
 set -uo pipefail
 
 APP_DIR="${CLAUDE_REED_HOME:-$HOME/.local/share/claude-reed}"
 CONFIG="${CLAUDE_REED_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/claude-reed/config}"
 TEXTO="${CLAUDE_REED_TEXTO:-$HOME/.cache/claude-reed/ultima-respuesta.txt}"
 PIDFILE="${XDG_RUNTIME_DIR:-/tmp}/claude-reed.pid"
+PREP_PID="${XDG_RUNTIME_DIR:-/tmp}/claude-reed-prepare.pid"
+CACHE_DIR="$(dirname "$TEXTO")"
 
 ENGINE=piper
 # shellcheck source=/dev/null
@@ -58,8 +61,49 @@ parar() {
   return 1
 }
 
+# Ruta del audio precalculado para el texto $1 con la config actual.
+# El hash incluye la config: si cambias de motor o de voz, no reutiliza audio viejo.
+audio_cache() {
+  local h
+  h="$( { echo "$ENGINE"; cat "$CONFIG" 2>/dev/null; cat "$1"; } | sha1sum | cut -c1-16)"
+  echo "$CACHE_DIR/audio-$h.wav"
+}
+
+# Genera en segundo plano el audio de la última respuesta (lo lanza el hook Stop),
+# para que al pulsar el atajo solo haya que reproducirlo.
+preparar() {
+  case "${PRECACHE:-auto}" in
+    0|no|false) return 0 ;;
+    auto) [[ "$ENGINE" == elevenlabs ]] && return 0 ;;  # en la nube cuesta dinero
+  esac
+  [[ -s "$TEXTO" ]] || return 0
+  local motor="$APP_DIR/engines/$ENGINE.sh"
+  [[ -x "$motor" ]] || return 1
+  mkdir -p "$CACHE_DIR"
+
+  # Una respuesta nueva deja obsoleta la preparación anterior: la cancelamos.
+  if [[ -f "$PREP_PID" ]]; then
+    kill -- -"$(cat "$PREP_PID")" 2>/dev/null
+  fi
+  echo $$ > "$PREP_PID"
+
+  local src wav tmp
+  src="$(mktemp)"
+  cp "$TEXTO" "$src"           # foto del texto: puede cambiar mientras sintetizamos
+  wav="$(audio_cache "$src")"
+  tmp="$(mktemp "$CACHE_DIR/.audio-XXXXXX.wav")"
+  # shellcheck disable=SC2064  # queremos expandir las rutas ya
+  trap "rm -f '$src' '$tmp'; [[ \"\$(cat '$PREP_PID' 2>/dev/null)\" == $$ ]] && rm -f '$PREP_PID'" EXIT
+
+  if [[ ! -s "$wav" ]] && nice -n 19 "$motor" speak "$src" "$tmp"; then
+    mv -f "$tmp" "$wav"
+  fi
+  # Solo guardamos el audio de la última respuesta.
+  find "$CACHE_DIR" -maxdepth 1 -name 'audio-*.wav' ! -name "${wav##*/}" -delete
+}
+
 leer() {
-  local fichero="$1"
+  local fichero="$1" listo="${2:-}"
   local motor="$APP_DIR/engines/$ENGINE.sh"
   if [[ ! -x "$motor" ]]; then
     avisar "Motor desconocido: $ENGINE (no existe $motor)"
@@ -70,6 +114,10 @@ leer() {
   # mata también a los hijos (python, piper, el reproductor...).
   set -m
   (
+    # Audio ya generado por "preparar": suena al instante.
+    if [[ -n "$listo" && -s "$listo" ]]; then
+      reproducir "$listo" && exit 0
+    fi
     # Si el motor sabe hacer streaming, empieza a sonar con la primera frase.
     if rate="$("$motor" rate 2>/dev/null)" && [[ "$rate" =~ ^[0-9]+$ ]]; then
       "$motor" stream "$fichero" | reproducir_crudo "$rate" && exit 0
@@ -100,14 +148,16 @@ case "${1:-}" in
   engine)
     echo "$ENGINE" ;;
   -h|--help)
-    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ;;
+    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
   "")
     parar && exit 0   # pulsar otra vez = parar
     if [[ ! -s "$TEXTO" ]]; then
       avisar "Todavía no hay ninguna respuesta guardada"
       exit 0
     fi
-    leer "$TEXTO" ;;
+    leer "$TEXTO" "$(audio_cache "$TEXTO")" ;;
+  prepare)
+    preparar ;;
   *)
     echo "Opción desconocida: $1 (usa --help)" >&2
     exit 2 ;;

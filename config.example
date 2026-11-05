@@ -5,6 +5,10 @@
 # Motor de voz: piper | kokoro | elevenlabs  (o cualquier script en engines/)
 ENGINE=piper
 
+# Generar el audio en segundo plano al terminar cada respuesta, para que suene
+# al instante al pulsar el atajo: auto (sí, salvo con elevenlabs) | yes | no
+PRECACHE=auto
+
 # --- Piper (local, ligero) -----------------------------------------------
 # Voces: https://huggingface.co/rhasspy/piper-voices
 # Si cambias de voz, vuelve a ejecutar ./install.sh para descargarla.

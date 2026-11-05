@@ -4,11 +4,13 @@
 Claude Code ejecuta este script al terminar cada respuesta y le pasa por stdin
 un JSON con `last_assistant_message` y/o `transcript_path`. El texto limpio se
 guarda en ~/.cache/claude-reed/ultima-respuesta.txt para que `claude-reed` lo lea
-cuando se lo pidas.
+cuando se lo pidas, y lanza en segundo plano la generación del audio para que
+suene al instante al pulsar el atajo.
 """
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -68,6 +70,19 @@ def main():
     if texto:
         SALIDA.parent.mkdir(parents=True, exist_ok=True)
         SALIDA.write_text(texto, encoding="utf-8")
+        preparar_audio()
+
+
+def preparar_audio():
+    """Lanza `claude-reed prepare` en segundo plano (sin esperar) para tener el
+    audio listo antes de que pulses el atajo."""
+    if os.environ.get("CLAUDE_REED_NO_PREPARE"):
+        return
+    cmd = Path(__file__).resolve().parent.parent / "bin" / "claude-reed"
+    if os.access(cmd, os.X_OK):
+        subprocess.Popen([str(cmd), "prepare"], start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
 
 
 if __name__ == "__main__":
