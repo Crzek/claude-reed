@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+os.environ["CLAUDE_REED_NO_PREPARE"] = "1"  # los tests no generan audio
+
 RAIZ = Path(__file__).resolve().parent.parent
 HOOK = RAIZ / "hooks" / "guardar_respuesta.py"
 HOOK_CONFIG = RAIZ / "lib" / "hook_config.py"
